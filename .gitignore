@@ -30,3 +30,6 @@ dist-ssr/
 # local data
 *.sqlite3
 pgdata/
+
+# stray duplicate from a mis-extracted archive; delete after a reboot
+backend/backend/
