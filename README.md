@@ -7,28 +7,47 @@ actually arrived.
 
 ---
 
-## ⚠️ Read this first — the state this repository is in
+## ⚠️ Read this first — the safety rules are illustrative
 
-**None of this code has ever been executed.** It was written in an environment
-with no PyPI, no Docker and no PostgreSQL, so:
+**The food-safety thresholds in `demo_v1.yaml` are placeholders written for a
+demonstration. They have not been reviewed by any food safety authority and
+must not be used to decide whether real food is safe to eat.**
 
-- **No test has run.** They are written, not verified.
-- **No dependency version is confirmed.** The floors in `pyproject.toml` are
-  educated guesses; `uv sync` may need to adjust them.
-- **LangGraph is the least certain part.** Its API has moved across versions
-  and could not be installed here. Graph construction is isolated in one file
-  for exactly this reason, and there is a fallback runner (see below).
-- **Python files are syntax-checked only.** Every file parses and every
-  internal `app.*` import resolves to a real name. That proves it is
-  well-formed, not that it works.
+The engine refuses to load a ruleset that does not declare its policy status,
+so this cannot be forgotten quietly: every safety decision in the system
+carries the version of the ruleset that produced it, and that version is
+labelled `ILLUSTRATIVE_DEMO — NOT VERIFIED AGAINST ANY FOOD SAFETY AUTHORITY`.
 
-Expect errors on the first run. That is the normal starting point. The
-[Troubleshooting](#troubleshooting) section covers the likely ones.
+Replacing the thresholds with reviewed ones is a config change plus a new
+version row. Getting them reviewed is the part that needs qualified people.
 
-One prior session got as far as 28 passing database tests on a real PostGIS
-instance, and found five environment bugs along the way (CORS list parsing,
-empty env vars, a missing `greenlet` extra, Windows' event loop policy, and
-Postgres parameter type inference). All five fixes are already applied here.
+## Status
+
+- **95 tests pass** — 65 unit, 30 integration against a live PostgreSQL 16 +
+  PostGIS 3.4 container. `cd backend && uv run pytest -q`.
+- **The full loop has been driven end to end** in the browser: a donation
+  listed, cleared by the safety engine, claimed by a recipient, a volunteer
+  assigned, 117 of 120 meals collected, 117 delivered against a verified code,
+  and the Impact dashboard reporting 117 delivered from `handover_events`.
+- **Extraction runs against a real language model** — a local one, through
+  Ollama, with no API key and no network dependency. `LLM_PROVIDER=mock` is
+  the default and is what the test suite uses; `anthropic` is implemented too.
+- **The orchestrator runs on the sequential engine.** LangGraph installs and
+  its API matches, but `langgraph-checkpoint-postgres` 3.x hangs during
+  checkpointer setup against this schema. Graph construction is isolated in
+  `app/workflows/graph.py` precisely so this could be routed around:
+  `run_sequential` walks the same nodes and the same pure routers, losing
+  checkpointing and nothing else. Both engines are selectable in the UI and
+  the response states which one actually ran.
+
+### Known gaps, stated plainly
+
+- No frontend tests, and no tests that drive the HTTP layer through a client.
+  Both of the real bugs found by hand lived in exactly that gap.
+- The delivery code is stored in plaintext in `handover_events.notes`. The API
+  never returns it, but it should be hashed like the collection code.
+- No coverage measurement, so this README quotes test counts and never a
+  percentage.
 
 ---
 
