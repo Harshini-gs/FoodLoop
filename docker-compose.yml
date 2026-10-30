@@ -1,0 +1,47 @@
+# Day 1 only needs the `db` service:
+#     docker compose up -d db
+#
+# The backend service is here for Day 7, once there is something to serve.
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    container_name: foodloop-db
+    environment:
+      POSTGRES_USER: foodloop
+      POSTGRES_PASSWORD: foodloop
+      POSTGRES_DB: foodloop
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U foodloop -d foodloop"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: foodloop-api
+    env_file:
+      - ./backend/.env
+    environment:
+      # inside the compose network the host is `db`, not localhost
+      DATABASE_URL: postgresql+psycopg://foodloop:foodloop@db:5432/foodloop
+      DATABASE_URL_SYNC: postgresql+psycopg://foodloop:foodloop@db:5432/foodloop
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    # Migrations run on start so a fresh clone needs one command.
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    profiles: ["full"]
+
+volumes:
+  pgdata:

@@ -1,0 +1,211 @@
+# =============================================================================
+# FoodLoop safety ruleset — demo_v1
+# =============================================================================
+#
+# policy_status is MANDATORY. The rules engine refuses to load a ruleset without
+# it. That is deliberate: it makes an illustrative demo policy impossible to
+# confuse with one checked against an authority.
+#
+policy_status: "ILLUSTRATIVE_DEMO — NOT VERIFIED AGAINST ANY FOOD SAFETY AUTHORITY"
+
+source_note: >
+  Every threshold below is a PLACEHOLDER chosen to make the workflow
+  demonstrable. None of it is derived from FSSAI, Codex Alimentarius, HACCP or
+  any other authority, and none of it has been reviewed by a food safety
+  professional. Before any real pilot, each limit must be replaced with a value
+  from a qualified source and the whole ruleset reviewed by qualified people.
+  Swapping them in is a config change plus a new safety_rule_versions row;
+  no application code changes.
+
+version: demo_v1
+
+# -----------------------------------------------------------------------------
+# Rule semantics
+# -----------------------------------------------------------------------------
+# severity: hard | soft
+#   hard — failure sets REJECTED. No agent, LLM or service may override it.
+#   soft — failure sets NEEDS_REVIEW, and a human decides.
+#
+# on_missing_evidence: review | reject
+#   What to do when a required field is NULL. Never "pass".
+#   Missing evidence is not evidence of compliance.
+#
+# Outcome resolution, in this exact order:
+#   1. any hard rule FAILED                     -> REJECTED
+#   2. any rule UNEVALUATED (missing evidence)  -> NEEDS_REVIEW
+#   3. any soft rule FAILED                     -> NEEDS_REVIEW
+#   4. everything else                          -> ELIGIBLE
+# -----------------------------------------------------------------------------
+
+rules:
+
+  - id: window_not_in_past
+    description: The pickup window must not have already closed.
+    severity: hard
+    applies_to: [ALL]
+    requires: [pickup_window_end]
+    on_missing_evidence: reject
+    check:
+      type: timestamp_after_now
+      field: pickup_window_end
+
+  - id: window_is_ordered
+    description: The pickup window must start before it ends.
+    severity: hard
+    applies_to: [ALL]
+    requires: [pickup_window_start, pickup_window_end]
+    on_missing_evidence: reject
+    check:
+      type: timestamp_order
+      earlier: pickup_window_start
+      later: pickup_window_end
+
+  - id: quantity_positive
+    description: A donation must offer a positive quantity.
+    severity: hard
+    applies_to: [ALL]
+    requires: [quantity_total]
+    on_missing_evidence: reject
+    check:
+      type: numeric_min
+      field: quantity_total
+      min_exclusive: 0
+
+  - id: preparation_time_known
+    description: >
+      Cooked food needs a known preparation time. Without it the safe-window
+      rule below cannot be evaluated at all.
+    severity: soft
+    applies_to: [COOKED_VEG, COOKED_NONVEG]
+    requires: [prepared_at]
+    on_missing_evidence: review
+    check:
+      type: field_present
+      field: prepared_at
+
+  - id: cooked_safe_window
+    description: >
+      PLACEHOLDER. Hours from preparation to the end of the pickup window,
+      beyond which cooked food is refused.
+    severity: hard
+    applies_to: [COOKED_VEG, COOKED_NONVEG]
+    requires: [prepared_at, pickup_window_end]
+    on_missing_evidence: review
+    check:
+      type: hours_between_at_most
+      start_field: prepared_at
+      end_field: pickup_window_end
+      max_hours:
+        COOKED_VEG: 4.0        # PLACEHOLDER
+        COOKED_NONVEG: 2.0     # PLACEHOLDER — shorter, illustratively
+
+  - id: nonveg_requires_refrigeration
+    description: >
+      PLACEHOLDER. Cooked non-vegetarian food held more than this long must
+      have been refrigerated.
+    severity: hard
+    applies_to: [COOKED_NONVEG]
+    requires: [prepared_at, kept_refrigerated]
+    on_missing_evidence: review
+    check:
+      type: conditional_flag_required
+      flag_field: kept_refrigerated
+      when:
+        type: hours_between_at_least
+        start_field: prepared_at
+        end_field: pickup_window_end
+        min_hours: 1.0         # PLACEHOLDER
+
+  - id: dairy_cold_chain
+    description: PLACEHOLDER. Dairy must be declared refrigerated.
+    severity: hard
+    applies_to: [DAIRY]
+    requires: [kept_refrigerated]
+    on_missing_evidence: review
+    check:
+      type: flag_is_true
+      field: kept_refrigerated
+
+  - id: bakery_same_day
+    description: PLACEHOLDER. Bakery items must be from the same calendar day.
+    severity: soft
+    applies_to: [BAKERY]
+    requires: [prepared_at, pickup_window_end]
+    on_missing_evidence: review
+    check:
+      type: hours_between_at_most
+      start_field: prepared_at
+      end_field: pickup_window_end
+      max_hours:
+        BAKERY: 24.0           # PLACEHOLDER
+
+  - id: storage_described
+    description: >
+      Perishable categories need some storage description, so a reviewer has
+      something to assess.
+    severity: soft
+    applies_to: [COOKED_VEG, COOKED_NONVEG, DAIRY, PRODUCE]
+    requires: [storage_notes]
+    on_missing_evidence: review
+    check:
+      type: text_min_length
+      field: storage_notes
+      min_length: 10
+
+  - id: allergen_note_for_cooked
+    description: Cooked food should carry an allergen note.
+    severity: soft
+    applies_to: [COOKED_VEG, COOKED_NONVEG, BAKERY]
+    requires: [allergen_notes]
+    on_missing_evidence: review
+    check:
+      type: field_present
+      field: allergen_notes
+
+  - id: donor_org_verified
+    description: >
+      The donating organization must be verified by an administrator. Keeps an
+      unvetted account from putting food into the system.
+    severity: soft
+    applies_to: [ALL]
+    requires: [donor_org_is_verified]
+    on_missing_evidence: review
+    check:
+      type: flag_is_true
+      field: donor_org_is_verified
+
+# -----------------------------------------------------------------------------
+# Recipient-side eligibility, evaluated at reservation time rather than at
+# listing time, because it depends on which recipient is claiming.
+# -----------------------------------------------------------------------------
+recipient_rules:
+
+  - id: category_accepted
+    description: The recipient must accept this food category.
+    severity: hard
+    check:
+      type: category_in_list
+      donation_field: food_category
+      recipient_field: accepted_categories
+
+  - id: refrigeration_capability
+    description: >
+      PLACEHOLDER. A recipient taking dairy or cooked non-vegetarian food must
+      have refrigeration.
+    severity: hard
+    applies_to: [DAIRY, COOKED_NONVEG]
+    check:
+      type: flag_is_true
+      recipient_field: has_refrigeration
+
+  - id: within_operating_hours
+    description: >
+      The pickup window must overlap the recipient's operating hours, compared
+      in DEFAULT_TIMEZONE local wall-clock time.
+    severity: soft
+    check:
+      type: window_overlaps_hours
+      window_start_field: pickup_window_start
+      window_end_field: pickup_window_end
+      opens_field: opens_at
+      closes_field: closes_at

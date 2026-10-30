@@ -1,0 +1,32 @@
+# secrets — the whole point of .env.example
+.env
+.env.*
+!.env.example
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+.coverage
+htmlcov/
+
+# node
+node_modules/
+dist-ssr/
+*.local
+
+# editors
+.vscode/
+.idea/
+.DS_Store
+
+# local data
+*.sqlite3
+pgdata/
